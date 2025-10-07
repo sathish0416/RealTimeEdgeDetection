@@ -44,14 +44,17 @@ A cross-platform project that demonstrates real-time image edge detection on And
 
 ### Android Studio with Edge Detection
 ![Android Studio Edge Detection](docs/screenshots/android_studio_edge_detection.jpg)
+
 *Development environment showing edge detection processing in real-time*
 
 ### Edge Detection Output
 ![Edge Detection on Bookshelf](docs/screenshots/edge_detection_bookshelf.jpg)
+
 *Real-world edge detection applied to scene - showcasing the Canny edge algorithm*
 
 ### Web Viewer Interface
 ![Web Viewer](docs/screenshots/web_viewer.png)
+
 *Web companion viewer running at localhost:5173 with FPS tracking and resolution display*
 
 

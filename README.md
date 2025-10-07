@@ -51,7 +51,7 @@ A cross-platform project that demonstrates real-time image edge detection on And
 *Real-world edge detection applied to scene - showcasing the Canny edge algorithm*
 
 ### Web Viewer Interface
-![Web Viewer](docs/screenshots/web_viewer.jpg)
+![Web Viewer](docs/screenshots/web_viewer.png)
 *Web companion viewer running at localhost:5173 with FPS tracking and resolution display*
 
 

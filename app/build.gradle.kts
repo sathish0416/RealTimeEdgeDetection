@@ -48,13 +48,17 @@ android {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
+            // NDK STL is chosen by linking c++_shared in CMake; no extra args needed here
         }
     }
 
-    // Ensure OpenCV native runtime packaging behaves
-    packagingOptions {
+    // Package resources and native libs
+    packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 }

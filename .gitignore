@@ -1,12 +1,25 @@
 *.iml
 .gradle
 /local.properties
+
+# --- Web viewer (Vite/TypeScript) ---
+/web/node_modules/
+/web/dist/
+/web/.vite/
+/web/*.log
+
+# --- Android/General artifacts ---
+*.log
+*.apk
+*.aab
+/.idea/
+/.gradle/
+**/build/
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
 /.idea/workspace.xml
 /.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
 .DS_Store
 /build
 /captures

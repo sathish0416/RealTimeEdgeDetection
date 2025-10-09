@@ -24,9 +24,36 @@ A cross-platform project that demonstrates real-time image edge detection on And
 
 ## 2) Features
 
-- **Real-time native edge detection**
-  - Captures camera frames and converts YUV_420_888 format to NV21.
-  - Processes frames through JNI bridge to native C++ code for edge detection using OpenCV.
+- **Real-time GPU edge detection with OpenGL ES 2.0**
+  - Captures camera frames and renders with real-time shader-based processing
+  - Multiple visual modes: Raw feed, Edge detection (Sobel), Grayscale, and Color invert
+  - Smooth 30+ FPS performance on modern Android devices
+
+- **Interactive UI controls**
+  - **Toggle Mode button**: Cycle through Raw → Edge → Grayscale → Invert modes
+  - **Capture button**: Save current frame as PNG to device storage
+  - **Live FPS counter**: Real-time display of rendering performance
+  - **Mode indicator**: Shows current active shader mode
+
+- **OpenGL shader effects**
+  - Raw camera feed: Direct passthrough rendering
+  - Edge detection: Real-time Sobel edge detection on GPU
+  - Grayscale: Luminance-based grayscale conversion
+  - Invert: Color inversion effect
+
+- **Embedded HTTP server**
+  - Built-in NanoHTTPD server runs on port 8080
+  - Exposes REST API endpoints for live frame streaming
+  - WebSocket-style image streaming at ~5 FPS to web viewer
+  - Real-time stats endpoint (FPS, mode, timestamp)
+
+- **Enhanced web companion viewer**
+  - Connect to Android device via HTTP (http://device-ip:8080)
+  - Live streaming of processed frames from Android
+  - Real-time FPS and mode display
+  - Auto-refresh with pause/resume controls
+  - Static file viewing mode for saved PNGs
+  - Connection status indicator
 
 - **Fast frame conversion**
   - Efficient handling of camera planes and strides to build packed NV21 buffers.
@@ -35,30 +62,64 @@ A cross-platform project that demonstrates real-time image edge detection on And
   - NDK and CMake integration for building native libraries.
   - Supports multiple ABIs: arm64-v8a and armeabi-v7a.
 
-- **Web companion viewer**
-  - Lightweight TypeScript + Vite web app to visualize processed images.
-  - Real-time FPS tracking and resolution display.
+
+## 3) Bonus Features ✨
+
+This project includes several advanced bonus features:
+
+- **Toggle Button**: Cycle through 4 visual modes (Raw, Edge, Grayscale, Invert) with a single button tap. All processing happens on GPU via OpenGL ES 2.0 shaders.
+
+- **FPS Counter**: Real-time performance tracking displayed in top-left overlay. Typically achieves 30+ FPS on modern Android devices.
+
+- **OpenGL Shader Effects**: GPU-accelerated visual effects including Sobel edge detection with 3x3 convolution kernel, luminance-based grayscale conversion, and color inversion.
+
+- **HTTP Server**: Embedded NanoHTTPD server on port 8080 streams frames to web viewers at ~5 FPS. Exposes REST API for images, stats, and saved files.
+
+- **Enhanced Web Viewer**: Connect to Android device via HTTP for live streaming. Features auto-refresh controls, connection status indicator, and dual mode support (live streaming or static file viewing).
+
+See screenshots below for visual demonstrations of these features.
 
 
-## 3) Screenshots / GIFs
+## 4) Screenshots / GIFs
 
-### Android Studio with Edge Detection
+### Core Features (3 screenshots)
 ![Android Studio Edge Detection](docs/screenshots/android_studio_edge_detection.jpg)
 
 *Development environment showing edge detection processing in real-time*
 
-### Edge Detection Output
 ![Edge Detection on Bookshelf](docs/screenshots/edge_detection_bookshelf.jpg)
 
 *Real-world edge detection applied to scene - showcasing the Canny edge algorithm*
 
-### Web Viewer Interface
 ![Web Viewer](docs/screenshots/web_viewer.png)
 
 *Web companion viewer running at localhost:5173 with FPS tracking and resolution display*
 
+### Bonus Features - Toggle Modes (4 screenshots)
+![Toggle Mode - Raw](docs/screenshots/toggle_raw.jpg)
+*Raw camera feed mode - direct passthrough without processing*
 
-## 4) Setup (Android Studio)
+![Toggle Mode - Edge](docs/screenshots/toggle_edge.jpg)
+*Edge detection mode - real-time Sobel operator with GPU acceleration*
+
+![Toggle Mode - Grayscale](docs/screenshots/toggle_grayscale.jpg)
+*Grayscale mode - luminance-based conversion*
+
+![Toggle Mode - Invert](docs/screenshots/toggle_invert.jpg)
+*Color invert mode - full RGB inversion effect*
+
+### Bonus Features - Web Viewer (3 screenshots)
+![Web Viewer - Connection](docs/screenshots/web_viewer_Disconnection.png)
+*Web viewer connection UI - enter device IP and connect for live streaming*
+
+![Web Viewer - Live Stream](docs/screenshots/web_viewer_live.png)
+*Live streaming from Android device with real-time FPS and mode display*
+
+![Web Viewer - Controls](docs/screenshots/web_viewer_controls.png)
+*Web viewer controls - pause/resume auto-refresh and manual reload*
+
+
+## 5) Setup (Android Studio)
 
 - **Prerequisites**
   - Android Studio (latest stable)
@@ -90,26 +151,73 @@ A cross-platform project that demonstrates real-time image edge detection on And
   - Make sure `src/main/cpp/` contains your native implementation for `processFrameNV21ToPNG(...)` and a matching `CMakeLists.txt` that finds/links OpenCV and produces `libnative-lib.so`.
 
 
-## 5) Quick architecture explanation
+## 6) Using the app
 
-- **High level**
-  - Camera produces frames as `Image` (`YUV_420_888`).
-  - `YuvUtils.toNV21(image)` builds `NV21` byte array respecting plane strides and interleaving VU.
-  - `NativeBridge.processFrameNV21ToPNG(nv21, width, height)` sends the frame to C++ via JNI.
-  - C++/OpenCV converts NV21 to grayscale/BGR, runs edge detection (e.g., Canny), encodes result to PNG bytes, and returns to Kotlin.
-  - Kotlin UI displays the PNG (e.g., via `BitmapFactory.decodeByteArray` then `ImageView`/Compose).
+### Android Controls
+
+The app displays two buttons at the bottom:
+- **Toggle Mode**: Cycles through visual effects
+  - Raw: Original camera feed
+  - Edge: Real-time Sobel edge detection
+  - Grayscale: Luminance-based conversion
+  - Invert: Color inversion effect
+- **Capture**: Saves the current frame as PNG to device storage
+
+The top-left overlay shows:
+- **FPS**: Real-time frames per second
+- **Mode**: Current active shader mode
+
+### Live Web Streaming
+
+The app automatically starts an HTTP server on port 8080 when launched. To view the live stream:
+
+1. **Find your device IP**: Settings → About → Status → IP address (e.g., `192.168.1.100`)
+2. **Access from browser**: 
+   - Direct access: `http://<device-ip>:8080` (embedded viewer)
+   - Via Vite dev server: Run web viewer and connect to device URL
+3. **Controls**: 
+   - The web viewer auto-refreshes every 200ms for smooth playback
+   - Use "Pause Auto-refresh" to stop updates
+   - "Reload" button manually refreshes the current frame
+
+### Saved Images
+
+Captured images are saved to the device's external files directory:
+- Path: `/sdcard/Android/data/com.example.realtimeedgedetection/files/`
+- Filename format: `edge_live_<timestamp>.png`
+- Access via device file manager or ADB
+
+## 7) Quick architecture explanation
+
+- **High level (GPU rendering pipeline)**
+  - Camera produces frames as `Image` (`YUV_420_888`) and outputs to `SurfaceTexture`
+  - `GLCameraRenderer` receives camera frames via OpenGL external texture (`OES_EGL_image_external`)
+  - Fragment shader processes each frame on GPU:
+    - Mode 0 (Raw): Direct passthrough
+    - Mode 1 (Edge): Sobel edge detection with 3x3 convolution kernel
+    - Mode 2 (Grayscale): Luminance-based conversion
+    - Mode 3 (Invert): Color inversion
+  - Rendered output displayed at 30+ FPS via `GLSurfaceView`
+  - Every 10th frame is captured as PNG and sent to HTTP server for web streaming
 
 - **JNI boundary**
   - `System.loadLibrary("native-lib")` in `NativeBridge.kt` loads your `.so`.
   - A native function `Java_com_example_realtimeedgedetection_NativeBridge_processFrameNV21ToPNG(...)` must be implemented in C++.
 
 - **Web companion (`web/`)**
-  - `web/main.ts` references DOM elements `edgeImage`, `fps`, `res`, `reloadBtn`.
-  - It updates FPS with `requestAnimationFrame`, shows image resolution on `load`, and cache-busts the image URL on reload.
-  - Intended use during development: point `edgeImage.src` to the latest processed PNG that your Android app or a tooling script exposes (e.g., via an HTTP endpoint or a periodically updated file served by Vite).
+  - `web/main.ts` references DOM elements for live connection to Android device
+  - Supports both static mode (viewing saved PNGs) and live mode (HTTP streaming)
+  - Auto-reconnect and connection status indicator
+  - Real-time stats display (FPS, mode, resolution)
+
+- **HTTP Server API Endpoints**
+  - `GET /` - Serves embedded web viewer UI
+  - `GET /api/latest-image` - Returns latest processed frame as PNG
+  - `GET /api/stats` - Returns JSON with `{fps, mode, timestamp}`
+  - `GET /api/image/{filename}` - Serves saved images from device storage
 
 
-## 6) Clone and run (GitHub) + License
+## 8) Clone and run (GitHub) + License
 
 - **Clone**
   ```bash
@@ -120,15 +228,27 @@ A cross-platform project that demonstrates real-time image edge detection on And
 - **Android app**
   - Open in Android Studio and run, as described above.
 
-- **Web viewer**
-  ```bash
-  # In a new terminal
-  cd web
-  npm install
-  npm run dev
-  # Open the local URL that Vite prints (e.g., http://localhost:5173)
-  # Ensure edgeImage.src points to a reachable PNG endpoint or file being updated
-  ```
+- **Web viewer (two modes)**
+  
+  **Option 1: Live streaming from Android device**
+  1. Run the Android app on your device
+  2. Connect your device and computer to the same WiFi network
+  3. Find your Android device's IP address (Settings → About → Status → IP address)
+  4. Open the web viewer:
+     ```bash
+     cd web
+     npm install
+     npm run dev
+     # Open http://localhost:5173 in your browser
+     ```
+  5. In the web UI, enter your Android device URL (e.g., `http://192.168.1.100:8080`)
+  6. Click "Connect" to start live streaming
+  7. You can also directly open `http://<device-ip>:8080` in your browser for the embedded viewer
+  
+  **Option 2: Static PNG viewing**
+  1. Place a PNG file at `web/assets/edge_sample.png`
+  2. Run the web dev server and it will display the static image
+  3. Use the "Reload" button to refresh
 
 - **License (MIT)**
 

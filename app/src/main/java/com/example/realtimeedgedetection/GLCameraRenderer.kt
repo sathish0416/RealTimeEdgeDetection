@@ -18,45 +18,74 @@ void main() {
 }
 """
 
+// Fragment shader with multiple modes controlled by uniform
 private const val FRAGMENT_SHADER = """
 #extension GL_OES_EGL_image_external : require
 precision mediump float;
 varying vec2 vTexCoord;
 uniform samplerExternalOES uTexture;
 uniform vec2 uTexelSize; // 1/width, 1/height
+uniform int uMode; // 0=raw, 1=edge, 2=grayscale, 3=invert
 
-// Simple Sobel edge on luminance
+// Helper: luminance calculation
 float luminance(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
 void main() {
-    vec2 t = uTexelSize;
-    vec3 c00 = texture2D(uTexture, vTexCoord + vec2(-t.x, -t.y)).rgb;
-    vec3 c10 = texture2D(uTexture, vTexCoord + vec2( 0.0, -t.y)).rgb;
-    vec3 c20 = texture2D(uTexture, vTexCoord + vec2( t.x, -t.y)).rgb;
-    vec3 c01 = texture2D(uTexture, vTexCoord + vec2(-t.x,  0.0)).rgb;
-    vec3 c11 = texture2D(uTexture, vTexCoord).rgb;
-    vec3 c21 = texture2D(uTexture, vTexCoord + vec2( t.x,  0.0)).rgb;
-    vec3 c02 = texture2D(uTexture, vTexCoord + vec2(-t.x,  t.y)).rgb;
-    vec3 c12 = texture2D(uTexture, vTexCoord + vec2( 0.0,  t.y)).rgb;
-    vec3 c22 = texture2D(uTexture, vTexCoord + vec2( t.x,  t.y)).rgb;
+    vec3 color = texture2D(uTexture, vTexCoord).rgb;
+    
+    if (uMode == 0) {
+        // Raw camera feed
+        gl_FragColor = vec4(color, 1.0);
+    } else if (uMode == 1) {
+        // Edge detection (Sobel)
+        vec2 t = uTexelSize;
+        vec3 c00 = texture2D(uTexture, vTexCoord + vec2(-t.x, -t.y)).rgb;
+        vec3 c10 = texture2D(uTexture, vTexCoord + vec2( 0.0, -t.y)).rgb;
+        vec3 c20 = texture2D(uTexture, vTexCoord + vec2( t.x, -t.y)).rgb;
+        vec3 c01 = texture2D(uTexture, vTexCoord + vec2(-t.x,  0.0)).rgb;
+        vec3 c11 = texture2D(uTexture, vTexCoord).rgb;
+        vec3 c21 = texture2D(uTexture, vTexCoord + vec2( t.x,  0.0)).rgb;
+        vec3 c02 = texture2D(uTexture, vTexCoord + vec2(-t.x,  t.y)).rgb;
+        vec3 c12 = texture2D(uTexture, vTexCoord + vec2( 0.0,  t.y)).rgb;
+        vec3 c22 = texture2D(uTexture, vTexCoord + vec2( t.x,  t.y)).rgb;
 
-    float l00=luminance(c00), l10=luminance(c10), l20=luminance(c20);
-    float l01=luminance(c01), l11=luminance(c11), l21=luminance(c21);
-    float l02=luminance(c02), l12=luminance(c12), l22=luminance(c22);
+        float l00=luminance(c00), l10=luminance(c10), l20=luminance(c20);
+        float l01=luminance(c01), l11=luminance(c11), l21=luminance(c21);
+        float l02=luminance(c02), l12=luminance(c12), l22=luminance(c22);
 
-    float gx = -l00 - 2.0*l01 - l02 + l20 + 2.0*l21 + l22;
-    float gy = -l00 - 2.0*l10 - l20 + l02 + 2.0*l12 + l22;
+        float gx = -l00 - 2.0*l01 - l02 + l20 + 2.0*l21 + l22;
+        float gy = -l00 - 2.0*l10 - l20 + l02 + 2.0*l12 + l22;
 
-    float g = clamp(length(vec2(gx, gy)), 0.0, 1.0);
-    gl_FragColor = vec4(vec3(g), 1.0);
+        float g = clamp(length(vec2(gx, gy)), 0.0, 1.0);
+        gl_FragColor = vec4(vec3(g), 1.0);
+    } else if (uMode == 2) {
+        // Grayscale
+        float gray = luminance(color);
+        gl_FragColor = vec4(vec3(gray), 1.0);
+    } else if (uMode == 3) {
+        // Invert
+        gl_FragColor = vec4(vec3(1.0) - color, 1.0);
+    } else {
+        // Fallback: raw
+        gl_FragColor = vec4(color, 1.0);
+    }
 }
 """
+
+enum class ShaderMode {
+    RAW,        // 0: Raw camera feed
+    EDGE,       // 1: Edge detection
+    GRAYSCALE,  // 2: Grayscale
+    INVERT      // 3: Color invert
+}
 
 class GLCameraRenderer(
     private val onSurfaceReady: (surface: Surface, width: Int, height: Int) -> Unit,
     private val desiredWidth: Int = 1280,
     private val desiredHeight: Int = 720,
     private val onPngReady: ((pngBytes: ByteArray) -> Unit)? = null,
+    private val onFpsUpdate: ((fps: Int) -> Unit)? = null,
+    private val onFrameUpdate: ((pngBytes: ByteArray) -> Unit)? = null
 ) : GLSurfaceView.Renderer {
 
     private var program = 0
@@ -66,6 +95,7 @@ class GLCameraRenderer(
     private var uTexMatrix = 0
     private var uTexture = 0
     private var uTexelSize = 0
+    private var uMode = 0
 
     private val mvpMatrix = FloatArray(16)
     private val texMatrix = FloatArray(16)
@@ -77,6 +107,18 @@ class GLCameraRenderer(
     private var viewWidth = 1
     private var viewHeight = 1
     @Volatile private var captureNextFrame = false
+    
+    // Shader mode control
+    @Volatile private var currentMode = ShaderMode.EDGE
+    
+    // FPS tracking
+    private var frameCount = 0
+    private var lastFpsTime = System.currentTimeMillis()
+    private var lastFrameTime = System.nanoTime()
+    
+    // Frame streaming for web viewer (send every Nth frame)
+    private var frameStreamCounter = 0
+    private val frameStreamInterval = 10 // Send every 10th frame (~3 FPS at 30 FPS)
 
     override fun onSurfaceCreated(unused: javax.microedition.khronos.opengles.GL10?, config: javax.microedition.khronos.egl.EGLConfig?) {
         program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
@@ -86,6 +128,7 @@ class GLCameraRenderer(
         uTexMatrix = GLES20.glGetUniformLocation(program, "uTexMatrix")
         uTexture = GLES20.glGetUniformLocation(program, "uTexture")
         uTexelSize = GLES20.glGetUniformLocation(program, "uTexelSize")
+        uMode = GLES20.glGetUniformLocation(program, "uMode")
 
         Matrix.setIdentityM(mvpMatrix, 0)
         Matrix.setIdentityM(texMatrix, 0)
@@ -108,6 +151,21 @@ class GLCameraRenderer(
     }
 
     override fun onDrawFrame(unused: javax.microedition.khronos.opengles.GL10?) {
+        // Calculate FPS
+        frameCount++
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastFpsTime >= 1000) {
+            val fps = (frameCount * 1000 / (currentTime - lastFpsTime)).toInt()
+            onFpsUpdate?.invoke(fps)
+            frameCount = 0
+            lastFpsTime = currentTime
+        }
+        
+        // Calculate frame time for logging
+        val now = System.nanoTime()
+        val frameTimeMs = (now - lastFrameTime) / 1_000_000.0
+        lastFrameTime = now
+        
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
         surfaceTexture?.updateTexImage()
@@ -126,6 +184,7 @@ class GLCameraRenderer(
         GLES20.glUniformMatrix4fv(uMVP, 1, false, mvpMatrix, 0)
         GLES20.glUniformMatrix4fv(uTexMatrix, 1, false, texMatrix, 0)
         GLES20.glUniform2f(uTexelSize, 1.0f / desiredWidth.toFloat(), 1.0f / desiredHeight.toFloat())
+        GLES20.glUniform1i(uMode, currentMode.ordinal)
 
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(0x8D65 /* GL_TEXTURE_EXTERNAL_OES */, oesTexId)
@@ -140,6 +199,18 @@ class GLCameraRenderer(
         )
         drawQuad(verts)
 
+        // Stream frames to web viewer periodically
+        frameStreamCounter++
+        if (frameStreamCounter >= frameStreamInterval) {
+            frameStreamCounter = 0
+            try {
+                val png = readCurrentFrameToPNG()
+                onFrameUpdate?.invoke(png)
+            } catch (_: Exception) {
+                // ignore; best-effort streaming
+            }
+        }
+        
         if (captureNextFrame) {
             try {
                 val png = readCurrentFrameToPNG()
@@ -154,6 +225,21 @@ class GLCameraRenderer(
 
     fun requestCapture() {
         captureNextFrame = true
+    }
+    
+    fun setShaderMode(mode: ShaderMode) {
+        currentMode = mode
+    }
+    
+    fun getCurrentMode(): ShaderMode = currentMode
+    
+    fun cycleShaderMode() {
+        currentMode = when (currentMode) {
+            ShaderMode.RAW -> ShaderMode.EDGE
+            ShaderMode.EDGE -> ShaderMode.GRAYSCALE
+            ShaderMode.GRAYSCALE -> ShaderMode.INVERT
+            ShaderMode.INVERT -> ShaderMode.RAW
+        }
     }
 
     fun release() {

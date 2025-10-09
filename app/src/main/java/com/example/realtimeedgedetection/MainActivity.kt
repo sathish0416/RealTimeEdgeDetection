@@ -11,12 +11,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -26,8 +31,12 @@ import android.view.TextureView
 import android.opengl.GLSurfaceView
 import android.view.Surface
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import android.media.ImageReader
 import java.io.File
@@ -47,6 +56,9 @@ class MainActivity : ComponentActivity() {
     private var cameraHandler: CameraHandler? = null
     private var textureViewRef: TextureView? = null
     private var glRenderer: GLCameraRenderer? = null
+    private var currentFps = mutableStateOf(0)
+    private var currentMode = mutableStateOf("Edge")
+    private var httpServer: EdgeDetectionServer? = null
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -56,6 +68,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        
+        // Start HTTP server
+        try {
+            httpServer = EdgeDetectionServer(this, 8080)
+            httpServer?.start()
+            Log.d(TAG, "HTTP server started on port 8080")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start HTTP server", e)
+        }
+        
         setContent {
             RealTimeEdgeDetectionTheme {
                 val context = LocalContext.current
@@ -86,7 +108,8 @@ class MainActivity : ComponentActivity() {
                             factory = { ctx ->
                                 GLSurfaceView(ctx).apply {
                                     setEGLContextClientVersion(2)
-                                    val renderer = GLCameraRenderer(onSurfaceReady = { surface: Surface, w: Int, h: Int ->
+                                    val renderer = GLCameraRenderer(
+                                        onSurfaceReady = { surface: Surface, w: Int, h: Int ->
                                         // Start camera with external GL surface
                                         runOnUiThread {
                                             val tv = textureViewRef ?: return@runOnUiThread
@@ -104,10 +127,22 @@ class MainActivity : ComponentActivity() {
                                             val out = File(getExternalFilesDir(null), "edge_live_${System.currentTimeMillis()}.png")
                                             out.writeBytes(pngBytes)
                                             Log.d(TAG, "Saved GL capture: ${out.absolutePath}")
+                                            // Update HTTP server with captured image
+                                            httpServer?.updateLatestImage(pngBytes)
                                         } catch (e: Exception) {
                                             Log.e(TAG, "Failed to save GL capture", e)
                                         }
-                                    })
+                                    },
+                                    onFpsUpdate = { fps ->
+                                        currentFps.value = fps
+                                        // Update HTTP server stats
+                                        httpServer?.updateStats(fps, currentMode.value)
+                                    },
+                                    onFrameUpdate = { pngBytes ->
+                                        // Stream frames to web viewer
+                                        httpServer?.updateLatestImage(pngBytes)
+                                    }
+                                    )
                                     glRenderer = renderer
                                     setRenderer(renderer)
                                     renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
@@ -115,15 +150,61 @@ class MainActivity : ComponentActivity() {
                             },
                             modifier = Modifier.fillMaxSize()
                         )
-                        // Capture button bottom-center overlay
+                        // FPS counter top-left overlay
+                        val fps by remember { currentFps }
+                        val mode by remember { currentMode }
+                        androidx.compose.foundation.layout.Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.TopStart
+                        ) {
+                            Card(
+                                modifier = Modifier.padding(16.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color.Black.copy(alpha = 0.6f)
+                                )
+                            ) {
+                                androidx.compose.foundation.layout.Column(
+                                    modifier = Modifier.padding(12.dp)
+                                ) {
+                                    Text(
+                                        text = "FPS: $fps",
+                                        color = Color.White,
+                                        fontSize = 16.sp
+                                    )
+                                    Text(
+                                        text = "Mode: $mode",
+                                        color = Color.White,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                        }
+                        
+                        // Buttons bottom-center overlay
                         androidx.compose.foundation.layout.Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.BottomCenter
                         ) {
-                            Button(
-                                onClick = { glRenderer?.requestCapture() },
+                            Row(
                                 modifier = Modifier.padding(bottom = 24.dp)
-                            ) { Text("Capture") }
+                            ) {
+                                Button(
+                                    onClick = { 
+                                        glRenderer?.cycleShaderMode()
+                                        currentMode.value = when(glRenderer?.getCurrentMode()) {
+                                            ShaderMode.RAW -> "Raw"
+                                            ShaderMode.EDGE -> "Edge"
+                                            ShaderMode.GRAYSCALE -> "Grayscale"
+                                            ShaderMode.INVERT -> "Invert"
+                                            else -> "Unknown"
+                                        }
+                                    }
+                                ) { Text("Toggle Mode") }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Button(
+                                    onClick = { glRenderer?.requestCapture() }
+                                ) { Text("Capture") }
+                            }
                         }
                         if (!hasPermission.value) {
                             // If no permission, request immediately
@@ -146,6 +227,16 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         stopCamera()
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            httpServer?.stop()
+            Log.d(TAG, "HTTP server stopped")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop HTTP server", e)
+        }
     }
 
     private fun isCameraGranted(): Boolean =

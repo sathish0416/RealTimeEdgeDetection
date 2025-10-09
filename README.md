@@ -97,25 +97,32 @@ See screenshots below for visual demonstrations of these features.
 
 ### Bonus Features - Toggle Modes (4 screenshots)
 ![Toggle Mode - Raw](docs/screenshots/toggle_raw.jpg)
+
 *Raw camera feed mode - direct passthrough without processing*
 
 ![Toggle Mode - Edge](docs/screenshots/toggle_edge.jpg)
+
 *Edge detection mode - real-time Sobel operator with GPU acceleration*
 
 ![Toggle Mode - Grayscale](docs/screenshots/toggle_grayscale.jpg)
+
 *Grayscale mode - luminance-based conversion*
 
 ![Toggle Mode - Invert](docs/screenshots/toggle_invert.jpg)
+
 *Color invert mode - full RGB inversion effect*
 
 ### Bonus Features - Web Viewer (3 screenshots)
 ![Web Viewer - Connection](docs/screenshots/web_viewer_Disconnection.png)
+
 *Web viewer connection UI - enter device IP and connect for live streaming*
 
 ![Web Viewer - Live Stream](docs/screenshots/web_viewer_live.png)
+
 *Live streaming from Android device with real-time FPS and mode display*
 
 ![Web Viewer - Controls](docs/screenshots/web_viewer_controls.png)
+
 *Web viewer controls - pause/resume auto-refresh and manual reload*
 
 
